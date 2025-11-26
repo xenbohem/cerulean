@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dream TV — Realms</title>
+
+<style>
+html,body{
+ margin:0;
+ height:100%;
+ background:black;
+ display:flex;
+ justify-content:center;
+ align-items:center;
+ overflow:hidden;
+}
+
+/* STARS */
+.stars{position:fixed;inset:0}
+.star{
+ position:absolute;width:2px;height:2px;background:white;border-radius:50%;
+ animation:twinkle 3s infinite alternate;
+}
+@keyframes twinkle{0%{opacity:.2}100%{opacity:.9}}
+
+/* MOON HAZE */
+#haze{
+ position:fixed;inset:0;
+ background:radial-gradient(circle,rgba(140,200,255,.15),black 65%);
+ animation:mist 12s infinite alternate;
+}
+@keyframes mist{from{opacity:.3}to{opacity:.7}}
+
+/* MONITOR */
+#tv{
+ width:360px;
+ height:360px;
+ border-radius:18px;
+ border:3px solid rgba(150,210,255,.7);
+ background:radial-gradient(circle,#3fa9c688,#021320);
+ box-shadow:0 0 40px rgba(120,200,255,.5), inset 0 0 25px rgba(80,150,200,.3);
+ position:relative;
+ animation:float 9s ease-in-out infinite;
+}
+@keyframes float{50%{transform:translateY(-10px)}}
+
+/* SCREEN */
+#screen{
+ position:absolute;inset:18px;border-radius:14px;overflow:hidden;
+}
+#screen img{
+ width:100%;height:100%;object-fit:contain;position:absolute;
+ transition:opacity 5s;opacity:0;
+ filter:drop-shadow(0 0 14px #aee8ff);
+}
+
+/* GUIDE ICON */
+#guide{
+ position:absolute;top:10px;right:10px;
+ width:22px;height:22px;border-radius:50%;
+ background:radial-gradient(circle,#8fdcff,#003);
+ box-shadow:0 0 12px #74d9ff;
+ animation:pulse 3s infinite;
+ cursor:pointer;
+}
+@keyframes pulse{50%{transform:scale(1.15);opacity:.6}}
+
+/* REALM MENU */
+#menu{
+ display:none;
+ position:absolute;inset:0;
+ background:rgba(0,20,40,.85);
+ z-index:10;
+ padding:18px;
+}
+.realmBtn{
+ display:block;
+ margin:6px 0;
+ background:rgba(120,200,255,.2);
+ color:#dbf6ff;
+ text-align:center;
+ padding:8px;
+ border-radius:10px;
+ cursor:pointer;
+ transition:.4s;
+}
+.realmBtn:hover{background:rgba(160,230,255,.4)}
+
+/* ROOM */
+#room{
+ display:none;
+ position:absolute;inset:0;
+ background:linear-gradient(#021320,#031e30);
+ color:#dbf6ff;
+ z-index:12;
+ padding:15px;
+}
+.avatar{
+ width:80px;height:80px;
+ background:rgba(255,255,255,.1);
+ border:2px solid #9edcff;
+ margin:10px auto;border-radius:50%;
+}
+.close{margin-top:10px;text-align:center;cursor:pointer}
+a{color:#aee8ff;text-decoration:none}
+
+/* TEXT */
+#whisper{
+ position:absolute;bottom:10px;width:100%;
+ text-align:center;color:#cfefff;font-size:12px;
+ opacity:0;transition:opacity 4s;
+}
+</style>
+</head>
+
+<body>
+
+<div class="stars" id="stars"></div>
+<div id="haze"></div>
+
+<div id="tv">
+<div id="screen">
+ <img id="a"><img id="b">
+ <div id="guide" title="Guide"></div>
+ <div id="whisper"></div>
+
+ <!-- MENU -->
+ <div id="menu"></div>
+
+ <!-- ROOM -->
+ <div id="room">
+   <div class="avatar">Avatar</div>
+   <div id="roomText"></div>
+   <div class="close" onclick="closeRoom()">return</div>
+ </div>
+
+</div>
+</div>
+
+<script>
+/* STARS */
+const s=document.getElementById("stars");
+for(let i=0;i<130;i++){
+ let d=document.createElement("div");
+ d.className="star";
+ d.style.left=Math.random()*100+"%";
+ d.style.top=Math.random()*100+"%";
+ s.appendChild(d);
+}
+
+/* SLIDES */
+let imgs=[
+"star.jpeg","star-1.jpeg",
+"stardance.jpeg","stardance-1.jpeg",
+"stardance-2.jpeg","stardance-3.jpeg"
+];
+let i=0,a=document.getElementById("a"),b=document.getElementById("b"),on=true;
+a.src=imgs[0];a.style.opacity=1;
+setInterval(()=>{
+ let n=imgs[(i+1)%imgs.length];
+ let fi=on?b:a,fo=on?a:b;
+ fi.src=n;fi.style.opacity=1;fo.style.opacity=0;
+ on=!on;i++;
+},6500);
+
+/* GUIDE */
+const guide=document.getElementById("guide");
+const menu=document.getElementById("menu");
+
+const realms={
+ Cafe:"A warm floating café between dreams and daylight.",
+ TeaGarden:"Soft winds and glowing leaves in an endless tea garden.",
+ "Zen Feelings":"A weightless sanctuary of floating thoughts.",
+ "The Way":"Paths that move when you aren’t looking.",
+ "Miki Music":"A world humming in melody and echo.",
+ "Hans Lair":"A quiet workshop of old magic and memory.",
+ "Charis Rat Room":"A tiny cosmic den of curiosity."
+};
+
+guide.onclick=()=>{
+ menu.style.display="block";menu.innerHTML="";
+ for(let r in realms){
+   let b=document.createElement("div");
+   b.className="realmBtn";b.innerText=r;
+   b.onclick=()=>openRoom(r);
+   menu.appendChild(b);
+ }
+};
+
+/* ROOM VIEW */
+const room=document.getElementById("room");
+const text=document.getElementById("roomText");
+function openRoom(name){
+ menu.style.display="none";
+ room.style.display="block";
+ text.innerHTML=`<h3>${name}</h3><p>${realms[name]}</p>
+ <p><a href="#" target="_blank">Related articles</a></p>`;
+}
+function closeRoom(){room.style.display="none";}
+
+/* WHISPERS */
+const lines=[
+"The TV hums softly…",
+"Other worlds are nearby.",
+"Touch the guide to travel.",
+"The border is listening."
+];
+let w=0,wh=document.getElementById("whisper");
+setInterval(()=>{
+ wh.innerText=lines[w%lines.length];
+ wh.style.opacity=1;
+ setTimeout(()=>wh.style.opacity=0,4000);
+ w++;
+},7000);
+</script>
+
+</body>
+</html>
