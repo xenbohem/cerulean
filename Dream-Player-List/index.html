@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lucid Dream Visualizer</title>
+
+<style>
+body{
+  margin:0;
+  overflow:hidden;
+  background:radial-gradient(circle,#020c18,#000);
+  font-family:system-ui;
+}
+
+canvas{display:block}
+
+#ui{
+  position:fixed;
+  bottom:12px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:10px;
+  align-items:center;
+  padding:8px 14px;
+  border-radius:18px;
+  background:rgba(5,20,35,.75);
+  box-shadow:0 0 30px rgba(120,200,255,.35);
+  backdrop-filter:blur(12px);
+}
+button{
+  background:#0e3c5d;
+  color:#cff3ff;
+  border:none;
+  padding:6px 14px;
+  border-radius:10px;
+  font-size:13px;
+  cursor:pointer;
+}
+button:hover{background:#1b7dad}
+
+#progress{
+  width:150px;
+  height:6px;
+  background:#041522;
+  border-radius:999px;
+  overflow:hidden;
+}
+#bar{height:100%;width:0;background:#62d4ff}
+#status{opacity:.7;font-size:12px}
+
+/* playlist */
+#playlist{
+  position:fixed;
+  right:0;
+  top:50%;
+  transform:translateY(-50%);
+  width:220px;
+  padding:12px;
+  background:rgba(3,10,18,.85);
+  color:#8feaff;
+  border-radius:15px 0 0 15px;
+}
+#playlist h3{margin:0 0 6px;font-size:15px;}
+#songs{
+  list-style:none;margin:0;padding:0;
+  max-height:260px;overflow-y:auto;
+}
+#songs li{
+  padding:5px 7px;
+  border-radius:6px;
+  cursor:pointer;
+}
+#songs li:hover{background:rgba(100,220,255,.12)}
+#songs li.active{background:#79ddff;color:#001521;font-weight:600}
+</style>
+</head>
+
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <button id="playpause">Pause</button>
+  <div id="progress"><div id="bar"></div></div>
+  <span id="status">Waiting for permission…</span>
+</div>
+
+<div id="playlist">
+  <h3>Playlist</h3>
+  <ul id="songs"></ul>
+</div>
+
+<audio id="audio" crossorigin="anonymous"></audio>
+
+<script>
+const canvas=document.getElementById("c"), ctx=canvas.getContext("2d");
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
+addEventListener("resize",resize);resize();
+
+const audio=document.getElementById("audio");
+const bar=document.getElementById("bar");
+const status=document.getElementById("status");
+const playlistUI=document.getElementById("songs");
+const playpause=document.getElementById("playpause");
+
+let audioCtx, analyser, dataArray, src;
+let ready=false, current=0, t=0,a=0;
+
+/* AUTO PLAYLIST */
+const playlist = [
+  "yeshua-ext.2.mp3"
+];
+
+audio.src = playlist[0];
+drawPlaylist();
+
+/* PLAY ON FIRST INTERACTION */
+document.body.addEventListener("click",init,{once:true});
+function init(){
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  analyser=audioCtx.createAnalyser();
+  analyser.fftSize=256;
+  dataArray=new Uint8Array(analyser.frequencyBinCount);
+  src=audioCtx.createMediaElementSource(audio);
+  src.connect(analyser); analyser.connect(audioCtx.destination);
+  audioCtx.resume();
+  audio.play();
+  ready=true;
+  status.textContent=playlist[0];
+}
+
+/* PLAY / PAUSE */
+playpause.onclick=()=>{
+  if(audio.paused){audio.play();playpause.textContent="Pause";}
+  else{audio.pause();playpause.textContent="Play";}
+}
+
+/* PROGRESS */
+audio.ontimeupdate=()=>{
+  if(audio.duration){
+    bar.style.width = (audio.currentTime/audio.duration*100)+"%";
+  }
+}
+
+/* PLAYLIST UI */
+function drawPlaylist(){
+  playlistUI.innerHTML="";
+  playlist.forEach((song,i)=>{
+    const li=document.createElement("li");
+    li.textContent = (i+1)+". "+song;
+    if(i===current) li.classList.add("active");
+    li.onclick = ()=>{
+      current=i;
+      audio.src=song;
+      audio.play();
+      drawPlaylist();
+      status.textContent=song;
+    };
+    playlistUI.appendChild(li);
+  });
+}
+
+/* LOGO */
+const logo=new Image();
+logo.src="logo.png";
+
+/* DRAW */
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const cx=canvas.width/2, cy=canvas.height/2;
+  t+=0.02; a+=0.02;
+
+  let energy=0,bass=0;
+  if(ready){
+    analyser.getByteFrequencyData(dataArray);
+    let total=0;
+    for(let i=0;i<dataArray.length;i++){
+      total+=dataArray[i];
+      if(i<12) bass+=dataArray[i];
+    }
+    energy=total/dataArray.length;
+    bass=bass/12;
+  }
+
+  /* AURA */
+  for(let i=0;i<6;i++){
+    const r=200+Math.sin(a+i)*40+energy;
+    const g=ctx.createRadialGradient(cx,cy,40,cx,cy,r);
+    g.addColorStop(0,`rgba(120,220,255,${.2+energy/255})`);
+    g.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=g;
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+  }
+
+  /* RIPPLES */
+  for(let r=1;r<14;r++){
+    ctx.beginPath();
+    for(let ang=0;ang<=Math.PI*2+0.01;ang+=0.1){
+      const wave=Math.sin(ang*3+t*4+r)*(energy*.6);
+      const rad=110+r*12+wave;
+      const x=cx+Math.cos(ang)*rad;
+      const y=cy+Math.sin(ang)*rad;
+      ang===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle="rgba(130,220,255,.25)";
+    ctx.stroke();
+  }
+
+  /* LOGO GLOW */
+  const pulse=.3+.7*Math.sin(t*3+energy*.04);
+  const s=140+energy*.4;
+  const glow=ctx.createRadialGradient(cx,cy,20,cx,cy,s);
+  glow.addColorStop(0,`rgba(170,245,255,${pulse})`);
+  glow.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=glow;
+  ctx.beginPath();
+  ctx.arc(cx,cy,s,0,Math.PI*2);ctx.fill();
+
+  /* LOGO IMAGE */
+  if(logo.complete){
+    const size=120+bass*.8;
+    ctx.globalCompositeOperation="lighter";
+    ctx.drawImage(logo,cx-size/2,cy-size/2,size,size);
+    ctx.globalCompositeOperation="source-over";
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+
+</body>
+</html>
