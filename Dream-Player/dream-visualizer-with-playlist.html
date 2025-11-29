@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dream Ripple Visualizer + Playlist</title>
+
+<style>
+html,body{
+  margin:0;
+  background:radial-gradient(circle at center,#020c18,#000);
+  overflow:hidden;
+  font-family:system-ui;
+}
+
+/* Bottom controls */
+#ui{
+  position:fixed;
+  bottom:10px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  gap:10px;
+  align-items:center;
+  background:rgba(10,30,50,.6);
+  padding:8px 12px;
+  border-radius:12px;
+  backdrop-filter:blur(10px);
+  box-shadow:0 0 20px rgba(100,200,255,.3);
+}
+button{
+  background:#0e3c5d;
+  color:#bfeaff;
+  border:none;
+  padding:6px 12px;
+  border-radius:8px;
+  cursor:pointer;
+}
+button:hover{background:#166a96}
+
+#progress{
+  width:160px;height:6px;background:#041522;border-radius:8px;overflow:hidden;
+}
+#bar{height:100%;width:0;background:#79ddff}
+#status{font-size:12px;opacity:.65}
+
+canvas{display:block}
+
+/* Playlist panel */
+#playlist{
+  position:fixed;
+  right:0;
+  top:50%;
+  transform:translateY(-50%);
+  width:220px;
+  background:rgba(3,12,20,.75);
+  padding:12px;
+  border-radius:14px 0 0 14px;
+  box-shadow:-8px 0 30px rgba(120,200,255,.15);
+  color:#84ddff;
+}
+#playlist h3{margin:0 0 6px;font-size:15px}
+
+#songs{
+  list-style:none;
+  padding:0;margin:0;
+  max-height:260px;
+  overflow-y:auto;
+}
+#songs li{
+  padding:5px;
+  border-radius:6px;
+  cursor:pointer;
+}
+#songs li:hover{background:rgba(100,200,255,.15);}
+#songs li.active{
+  background:#79ddff;
+  color:#00131f;
+  font-weight:bold;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <button id="load">Load Songs</button>
+  <button id="playpause">Pause</button>
+  <div id="progress"><div id="bar"></div></div>
+  <span id="status">No songs loaded</span>
+</div>
+
+<div id="playlist">
+  <h3>Playlist</h3>
+  <ul id="songs"></ul>
+</div>
+
+<audio id="audio" crossorigin="anonymous"></audio>
+
+<script>
+const canvas=document.getElementById("c"),ctx=canvas.getContext("2d");
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight}
+addEventListener("resize",resize);resize();
+
+const audio=document.getElementById("audio");
+const bar=document.getElementById("bar");
+const status=document.getElementById("status");
+const songList=document.getElementById("songs");
+const playpause=document.getElementById("playpause");
+
+const playlist=[];
+let current=-1;
+
+let audioCtx,analyser,dataArray,src,started=false;
+let t=0,a=0;
+
+/* LOGO */
+const logo=new Image();
+logo.src="logo.png";
+
+/* LOAD SONGS */
+document.getElementById("load").onclick=()=>{
+  const input=document.createElement("input");
+  input.type="file";
+  input.accept="audio/*";
+  input.multiple=true;
+  input.onchange=e=>{
+    const files=[...e.target.files].slice(0,7);
+    playlist.push(...files);
+    drawPlaylist();
+    if(current===-1) playSong(0);
+  }
+  input.click();
+}
+
+/* PLAY / PAUSE */
+playpause.onclick=()=>{
+  if(audio.paused) audio.play();
+  else audio.pause();
+}
+
+/* AUTO NEXT */
+audio.onended=()=>{
+  if(current<playlist.length-1){
+    playSong(current+1);
+  }
+}
+
+/* PROGRESS */
+audio.ontimeupdate=()=>{
+  if(audio.duration){
+    bar.style.width=(audio.currentTime/audio.duration*100)+"%";
+  }
+}
+
+/* AUDIO SETUP */
+function setupAudio(){
+  if(started) return;
+  started=true;
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  analyser=audioCtx.createAnalyser();
+  analyser.fftSize=256;
+  dataArray=new Uint8Array(analyser.frequencyBinCount);
+  src=audioCtx.createMediaElementSource(audio);
+  src.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  audioCtx.resume();
+}
+
+/* PLAY SONG */
+function playSong(i){
+  if(i<0||i>=playlist.length) return;
+  current=i;
+  audio.src=URL.createObjectURL(playlist[i]);
+  status.textContent=playlist[i].name;
+  setupAudio();
+  audio.play();
+  drawPlaylist();
+}
+
+/* DRAW PLAYLIST */
+function drawPlaylist(){
+  songList.innerHTML="";
+  playlist.forEach((file,i)=>{
+    const li=document.createElement("li");
+    li.textContent=(i+1)+". "+file.name;
+    if(i===current) li.classList.add("active");
+    li.onclick=()=>playSong(i);
+    songList.appendChild(li);
+  });
+}
+
+/* DRAW LOOP */
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const cx=canvas.width/2,cy=canvas.height/2;
+  t+=0.02;a+=0.02;
+
+  let energy=0,bass=0;
+  if(analyser){
+    analyser.getByteFrequencyData(dataArray);
+    let total=0;
+    for(let i=0;i<dataArray.length;i++){
+      total+=dataArray[i];
+      if(i<15) bass+=dataArray[i];
+    }
+    energy=total/dataArray.length;
+    bass=bass/15;
+  }
+
+  /* AURA */
+  for(let i=0;i<6;i++){
+    const r=200+Math.sin(a+i)*40+energy;
+    const g=ctx.createRadialGradient(cx,cy,40,cx,cy,r);
+    g.addColorStop(0,`rgba(140,220,255,${.25+energy/255})`);
+    g.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=g;
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+  }
+
+  /* RIPPLE RINGS */
+  for(let r=1;r<15;r++){
+    ctx.beginPath();
+    for(let ang=0;ang<=Math.PI*2+0.05;ang+=0.12){
+      const wave=Math.sin(ang*3+t*4+r)*(20+energy*.8);
+      const rad=100+r*14+wave;
+      const x=cx+Math.cos(ang)*rad;
+      const y=cy+Math.sin(ang)*rad;
+      ang===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle="rgba(120,210,255,.25)";
+    ctx.stroke();
+  }
+
+  /* GLOW */
+  const pulse=.4+.6*Math.sin(t*3+energy*.6);
+  const size=90+energy;
+  const glow=ctx.createRadialGradient(cx,cy,10,cx,cy,size);
+  glow.addColorStop(0,`rgba(170,240,255,${pulse})`);
+  glow.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle=glow;
+  ctx.beginPath();
+  ctx.arc(cx,cy,size,0,Math.PI*2);
+  ctx.fill();
+
+  /* LOGO */
+  if(logo.complete){
+    const scale=1+bass*.01;
+    const s=130*scale;
+    ctx.globalCompositeOperation="lighter";
+    ctx.drawImage(logo,cx-s/2,cy-s/2,s,s);
+    ctx.globalCompositeOperation="source-over";
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>
