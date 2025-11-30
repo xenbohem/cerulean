@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cerulean Snowglobe Music Visualizer</title>
+<style>
+html,body{margin:0;overflow:hidden;background:radial-gradient(circle,#010a1f,#000);font-family:system-ui}
+canvas{display:block}
+#ui{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:10px;background:rgba(5,20,35,.8);padding:8px 14px;border-radius:16px;z-index:10}
+button{background:#0e3c5d;color:#cff;border:none;padding:6px 12px;border-radius:8px;cursor:pointer}
+#progress{width:140px;height:6px;background:#041522;border-radius:999px;overflow:hidden}
+#bar{height:100%;width:0;background:#79ddff}
+#status{font-size:12px;opacity:.75}
+#playlist{position:fixed;right:0;top:50%;transform:translateY(-50%);width:210px;padding:10px;background:rgba(4,18,28,.8);color:#9be7ff;border-radius:12px 0 0 12px;z-index:10}
+#playlist h3{margin:0 0 6px;font-size:15px}
+#songs{list-style:none;margin:0;padding:0}
+#songs li{padding:5px;border-radius:6px;cursor:pointer}
+#songs li:hover{background:rgba(120,220,255,.15)}
+#songs li.active{background:#7edcff;color:#001;font-weight:bold}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+<button id="playpause">Play</button>
+<div id="progress"><div id="bar"></div></div>
+<span id="status">Click any song</span>
+</div>
+
+<div id="playlist">
+<h3>Playlist</h3>
+<ul id="songs"></ul>
+</div>
+
+<audio id="audio" crossorigin></audio>
+
+<script>
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+function resize(){c.width=innerWidth;c.height=innerHeight}
+addEventListener("resize",resize);resize();
+
+const audio=document.getElementById("audio");
+const playpause=document.getElementById("playpause");
+const bar=document.getElementById("bar");
+const status=document.getElementById("status");
+const songsUI=document.getElementById("songs");
+
+/* Playlist */
+const playlist=["song1.mp3","song2.mp3","song3.mp3","song4.mp3","song5.mp3","song6.mp3","song7.mp3"];
+let current=0;
+
+/* Audio */
+let audioCtx, analyser, dataArray, source, ready=false;
+
+/* Logo */
+const logo=new Image();
+logo.src="logo.png";
+
+/* Snow + stars + mist particles */
+const snow=[], stars=[], mist=[];
+for(let i=0;i<200;i++) snow.push({a:Math.random()*Math.PI*2,r:Math.random()*140,y:Math.random()*140,s:.5+Math.random()});
+for(let i=0;i<60;i++) stars.push({x:Math.random()*300-150,y:Math.random()*300-150,size:Math.random()*2+1,angle:Math.random()*Math.PI*2});
+for(let i=0;i<80;i++) mist.push({x:Math.random()*300-150,y:Math.random()*300-150,s:1+Math.random()*1.5,alpha:0.05+Math.random()*0.05});
+
+/* Init audio */
+function initAudio(){
+ if(ready) return;
+ audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+ analyser=audioCtx.createAnalyser();
+ analyser.fftSize=256;
+ dataArray=new Uint8Array(analyser.frequencyBinCount);
+ source=audioCtx.createMediaElementSource(audio);
+ source.connect(analyser);
+ analyser.connect(audioCtx.destination);
+ ready=true;
+}
+
+/* Play song */
+function playSong(i){
+ initAudio();
+ current=i;
+ audio.src=playlist[i];
+ audio.load();
+ audioCtx.resume();
+ audio.play().catch(()=>{});
+ status.textContent=playlist[i];
+ playpause.textContent="Pause";
+ drawPlaylist();
+}
+
+/* Play/Pause button */
+playpause.onclick=()=>{
+ if(!ready) playSong(current);
+ else if(audio.paused){audioCtx.resume();audio.play();playpause.textContent="Pause";}
+ else{audio.pause();playpause.textContent="Play";}
+};
+
+/* Auto-next song */
+audio.onended=()=>{if(current<playlist.length-1) playSong(current+1);};
+
+/* Progress bar */
+audio.ontimeupdate=()=>{if(audio.duration) bar.style.width=(audio.currentTime/audio.duration*100)+"%";};
+
+/* Playlist UI */
+function drawPlaylist(){
+ songsUI.innerHTML="";
+ playlist.forEach((song,i)=>{
+  const li=document.createElement("li");
+  li.textContent=(i+1)+". "+song;
+  if(i===current) li.classList.add("active");
+  li.onclick=()=>playSong(i);
+  songsUI.appendChild(li);
+ });
+}
+drawPlaylist();
+
+/* Draw */
+let t=0;
+function draw(){
+ ctx.clearRect(0,0,c.width,c.height);
+ const cx=c.width/2,cy=c.height/2;
+ t+=.02;
+
+ let energy=0,bass=0,mid=0,high=0;
+ if(ready){
+  analyser.getByteFrequencyData(dataArray);
+  for(let i=0;i<dataArray.length;i++){
+    energy+=dataArray[i];
+    if(i<10) bass+=dataArray[i];
+    if(i>10&&i<30) mid+=dataArray[i];
+    if(i>30&&i<60) high+=dataArray[i];
+  }
+  energy/=dataArray.length;
+  bass/=10; mid/=20; high/=30;
+ }
+
+ /* Clip circle */
+ ctx.save();
+ ctx.beginPath(); ctx.arc(cx,cy,150,0,Math.PI*2); ctx.clip();
+
+ /* Snow particles react */
+ snow.forEach(p=>{
+  const force = bass*0.12 + mid*0.05;
+  p.y += p.s + force;
+  p.a += 0.002 + mid*0.001;
+  if(p.y>150){p.y=-150; p.a=Math.random()*Math.PI*2;}
+  const x=cx+Math.cos(p.a)*p.r;
+  const y=cy+p.y;
+  const size = 1.5 + bass*0.03;
+  ctx.fillStyle=`rgba(${120+bass},${200+mid},${255-high},0.75)`;
+  ctx.beginPath(); ctx.arc(x,y,size,0,Math.PI*2); ctx.fill();
+ });
+
+ /* Star sparks */
+ stars.forEach(s=>{
+  const sway = Math.sin(t*3+s.angle)*3 + high*0.1;
+  const x=cx+s.x+sway;
+  const y=cy+s.y;
+  ctx.fillStyle=`rgba(${160+bass},${220+mid},255,${0.7+high/255})`;
+  ctx.beginPath(); ctx.arc(x,y,s.size,0,Math.PI*2); ctx.fill();
+ });
+
+ /* Mist */
+ mist.forEach(m=>{
+  m.y -= 0.1 + mid*0.01;
+  if(m.y<-150)m.y=150;
+  const x=cx+m.x; const y=cy+m.y;
+  ctx.fillStyle=`rgba(180,220,255,${m.alpha + mid*0.001})`;
+  ctx.beginPath(); ctx.arc(x,y,m.s,0,Math.PI*2); ctx.fill();
+ });
+
+ /* Glow with color shift */
+ const colorShift = Math.sin(t*0.5)*0.5+0.5;
+ const r = 80 + colorShift*50;
+ const g = 180 + colorShift*40;
+ const b = 220;
+ const glow=ctx.createRadialGradient(cx,cy,30,cx,cy,160);
+ glow.addColorStop(0,`rgba(${r},${g},${b},${0.2+bass/255})`);
+ glow.addColorStop(1,"rgba(0,0,0,0)");
+ ctx.fillStyle=glow;
+ ctx.beginPath(); ctx.arc(cx,cy,160,0,Math.PI*2); ctx.fill();
+
+ /* Logo */
+ if(logo.complete){
+  const size = 110 + bass*0.8;
+  ctx.globalCompositeOperation="lighter";
+  ctx.drawImage(logo,cx-size/2,cy-size/2,size,size);
+  ctx.globalCompositeOperation="source-over";
+ }
+
+ ctx.restore();
+ requestAnimationFrame(draw);
+}
+draw();
+</script>
+
+</body>
+</html>
