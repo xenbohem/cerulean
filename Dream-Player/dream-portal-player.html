@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dream Portal Snow Visualizer</title>
+<style>
+html,body{
+  margin:0;
+  background:#000;
+  overflow:hidden;
+  font-family:system-ui;
+}
+canvas{
+  display:block;
+}
+
+/* Playlist Sidebar */
+#playlist{
+  position:fixed;
+  top:50%;
+  right:0;
+  transform:translateY(-50%);
+  background:rgba(0,0,0,0.6);
+  padding:12px;
+  border-radius:12px 0 0 12px;
+  width:220px;
+  color:#7fd8ff;
+  font-family:system-ui;
+  box-shadow:0 0 20px rgba(100,200,255,0.2);
+}
+#playlist h3{margin-top:0;}
+#songList{
+  list-style:none;
+  padding-left:0;
+  max-height:300px;
+  overflow-y:auto;
+}
+#songList li{
+  padding:4px 6px;
+  cursor:pointer;
+  border-radius:6px;
+}
+#songList li:hover{background:rgba(100,200,255,0.2);}
+#songList li.playing{background:#79ddff;color:#000;}
+#pausePlay, #load{
+  margin-top:8px;
+  width:100%;
+  background:#0e3c5d;
+  border:none;
+  color:#bfeaff;
+  padding:6px;
+  border-radius:6px;
+  cursor:pointer;
+}
+#pausePlay:hover, #load:hover{background:#166a96;}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- Playlist Sidebar -->
+<div id="playlist">
+  <h3>Playlist</h3>
+  <ul id="songList"></ul>
+  <button id="load">Load Song(s)</button>
+  <button id="pausePlay">Pause</button>
+</div>
+
+<audio id="audio"></audio>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+function resize(){canvas.width=innerWidth; canvas.height=innerHeight;}
+resize(); window.onresize=resize;
+
+const audio = document.getElementById("audio");
+let audioCtx, analyser, src, dataArray, started=false;
+let t=0;
+
+// PRE-LOADED PLAYLIST
+const playlist = [
+  {name:"surrender.mp3", src:"surrender.mp3"},
+  {name:"yeshua.mp3", src:"yeshua.mp3"},
+  {name:"stars-story.mp3", src:"stars-story.mp3"},
+  {name:"chimeracafe.mp3", src:"chimeracafe.mp3"},
+  {name:"Miki-neko.mp3", src:"Miki-neko.mp3"}
+];
+let currentIndex = 0; 
+const songListEl = document.getElementById("songList");
+const pausePlayBtn = document.getElementById("pausePlay");
+const loadBtn = document.getElementById("load");
+
+// LOGO
+const logo = new Image();
+logo.src="logo.png";
+
+// STARS
+const stars=[];
+for(let i=0;i<60;i++){
+  stars.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:Math.random()*1.5+0.3,t:Math.random()*Math.PI*2,twinkle:Math.random()*0.02+0.01});
+}
+
+// SNOW
+const snowflakes=[];
+const SNOW_COUNT=150;
+for(let i=0;i<SNOW_COUNT;i++){
+  snowflakes.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,r:Math.random()*3+0.5,speed:Math.random()*0.6+0.3,drift:Math.random()*0.4-0.2,sway:Math.random()*2,depth:Math.random(),melt:false});
+}
+
+// PLAYLIST UI
+function updatePlaylistUI(){
+  songListEl.innerHTML="";
+  playlist.forEach((file,i)=>{
+    const li=document.createElement("li");
+    li.textContent=file.name;
+    if(i===currentIndex) li.classList.add("playing");
+    li.onclick=()=>playSong(i);
+    songListEl.appendChild(li);
+  });
+}
+
+// PLAY SONG BY INDEX
+function playSong(index){
+  if(index<0 || index>=playlist.length) return;
+  currentIndex=index;
+  audio.src = playlist[index].src;
+  setupAudio();
+  audio.play();
+  updatePlaylistUI();
+}
+
+// INITIALIZE UI
+updatePlaylistUI();
+playSong(currentIndex);
+
+// LOAD NEW SONGS OPTION
+loadBtn.onclick=()=>{
+  const input=document.createElement("input");
+  input.type="file"; input.accept="audio/*"; input.multiple=true;
+  input.onchange=e=>{
+    const files=Array.from(e.target.files);
+    files.forEach(file=>playlist.push({name:file.name, src:URL.createObjectURL(file)}));
+    updatePlaylistUI();
+  };
+  input.click();
+};
+
+pausePlayBtn.onclick=()=>{if(audio.paused) audio.play(); else audio.pause();};
+
+// AUDIO SETUP
+function setupAudio(){
+  if(started) return;
+  started=true;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize=256;
+  dataArray = new Uint8Array(analyser.frequencyBinCount);
+  if(src) src.disconnect();
+  src = audioCtx.createMediaElementSource(audio);
+  src.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  audioCtx.resume();
+}
+
+// ENERGY FUNCTION
+function energy(){
+  if(!analyser)return 0;
+  analyser.getByteFrequencyData(dataArray);
+  let sum=0;
+  for(let i=0;i<dataArray.length;i++) sum+=dataArray[i];
+  return sum/dataArray.length;
+}
+
+// DRAW LOOP
+function draw(){
+  requestAnimationFrame(draw);
+  t++;
+
+  const e=energy()||0;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // ⭐ STARS
+  for(let s of stars){
+    s.t+=s.twinkle;
+    const glow=.4+Math.sin(s.t)*.4;
+    ctx.fillStyle=`rgba(170,210,255,${glow})`;
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  // ❄️ MUSIC-REACTIVE SNOW & MELTING
+  for(let s of snowflakes){
+    if(!s.melt){
+      s.y+=s.speed+e*0.005;
+      s.x+=Math.sin(t*0.01+s.sway)*0.3+s.drift;
+      if(Math.random()<0.002) s.melt=true;
+    }else{
+      ctx.strokeStyle="rgba(140,200,255,0.15)";
+      ctx.beginPath();
+      ctx.arc(s.x,s.y,6,0,Math.PI*2);
+      ctx.stroke();
+      s.r-=0.05;
+      if(s.r<0.3){
+        s.r=Math.random()*3+0.5;
+        s.y=-5;
+        s.x=Math.random()*canvas.width;
+        s.melt=false;
+      }
+    }
+    if(!s.melt){
+      ctx.fillStyle=`rgba(220,240,255,${0.3+0.7*s.depth})`;
+      ctx.beginPath();
+      ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+      ctx.fill();
+    }
+    if(s.y>canvas.height){s.y=-5;s.x=Math.random()*canvas.width;}
+  }
+
+  // 🌊 RIPPLE AURA
+  ctx.strokeStyle="rgba(120,210,255,0.14)";
+  for(let r=0;r<5;r++){
+    ctx.beginPath();
+    ctx.arc(canvas.width/2, canvas.height/2, 120+r*12 + Math.sin(t*0.02+r)*10 + e*0.3, 0,Math.PI*2);
+    ctx.stroke();
+  }
+
+  // 💫 LOGO GLOW
+  const pulse = 1 + e/300;
+  ctx.save();
+  ctx.shadowBlur=30;
+  ctx.shadowColor="rgba(140,210,255,.8)";
+  if(logo.complete){
+    ctx.drawImage(logo,
+      canvas.width/2-80*pulse,
+      canvas.height/2-80*pulse,
+      160*pulse,
+      160*pulse
+    );
+  }
+  ctx.restore();
+}
+
+draw();
+</script>
+</body>
+</html>
