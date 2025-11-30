@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Snowglobe Playlist Player</title>
+<style>
+html,body{margin:0;overflow:hidden;background:radial-gradient(circle,#020c18,#000);font-family:system-ui}
+canvas{display:block}
+#ui{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:10px;background:rgba(5,20,35,.8);padding:8px 14px;border-radius:16px}
+button{background:#0e3c5d;color:#cff;border:none;padding:6px 12px;border-radius:8px;cursor:pointer}
+#progress{width:140px;height:6px;background:#041522;border-radius:999px;overflow:hidden}
+#bar{height:100%;width:0;background:#79ddff}
+#status{font-size:12px;opacity:.75}
+#playlist{position:fixed;right:0;top:50%;transform:translateY(-50%);width:210px;padding:10px;background:rgba(4,18,28,.8);color:#9be7ff;border-radius:12px 0 0 12px}
+#playlist h3{margin:0 0 6px;font-size:15px}
+#songs{list-style:none;margin:0;padding:0}
+#songs li{padding:5px;border-radius:6px;cursor:pointer}
+#songs li:hover{background:rgba(120,220,255,.15)}
+#songs li.active{background:#7edcff;color:#001;font-weight:bold}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+<button id="playpause">Play</button>
+<div id="progress"><div id="bar"></div></div>
+<span id="status">Waiting…</span>
+</div>
+
+<div id="playlist">
+<h3>Playlist</h3>
+<ul id="songs"></ul>
+</div>
+
+<audio id="audio" crossorigin="anonymous"></audio>
+
+<script>
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+function resize(){c.width=innerWidth;c.height=innerHeight}
+addEventListener("resize",resize);resize();
+
+const audio=document.getElementById("audio");
+const playpause=document.getElementById("playpause");
+const bar=document.getElementById("bar");
+const status=document.getElementById("status");
+const songsUI=document.getElementById("songs");
+
+/* ✅ PLAYLIST (EDIT FILE NAMES HERE) */
+const playlist=[
+ "song1.mp3",
+ "song2.mp3",
+ "song3.mp3",
+ "song4.mp3",
+ "song5.mp3",
+ "song6.mp3",
+ "song7.mp3"
+];
+let current=0;
+
+/* AUDIO CONTEXT */
+let audioCtx, analyser, dataArray, src, ready=false;
+
+/* LOGO */
+const logo=new Image();
+logo.src="logo.png";
+
+/* SNOW */
+const snow=[];
+for(let i=0;i<170;i++)
+ snow.push({a:Math.random()*Math.PI*2,r:Math.random()*140,y:Math.random()*140,s:.4+Math.random()});
+
+function drawPlaylist(){
+ songsUI.innerHTML="";
+ playlist.forEach((song,i)=>{
+  const li=document.createElement("li");
+  li.textContent=(i+1)+". "+song;
+  if(i===current) li.classList.add("active");
+  li.onclick=()=>playSong(i);
+  songsUI.appendChild(li);
+ });
+}
+
+/* INIT AUDIO */
+function initAudio(){
+ if(ready) return;
+ audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+ analyser=audioCtx.createAnalyser();
+ analyser.fftSize=256;
+ dataArray=new Uint8Array(analyser.frequencyBinCount);
+ src=audioCtx.createMediaElementSource(audio);
+ src.connect(analyser);
+ analyser.connect(audioCtx.destination);
+ ready=true;
+}
+
+/* PLAY SONG */
+function playSong(i){
+ current=i;
+ initAudio();
+ audio.src=playlist[i];
+ audio.play();
+ status.textContent=playlist[i];
+ playpause.textContent="Pause";
+ drawPlaylist();
+}
+
+/* NEXT SONG */
+audio.onended=()=>{
+ if(current<playlist.length-1) playSong(current+1);
+};
+
+/* PLAY PAUSE */
+playpause.onclick=()=>{
+ if(!ready) playSong(current);
+ else if(audio.paused){audio.play();playpause.textContent="Pause";}
+ else{audio.pause();playpause.textContent="Play";}
+};
+
+/* PROGRESS */
+audio.ontimeupdate=()=>{
+ if(audio.duration)
+  bar.style.width=(audio.currentTime/audio.duration*100)+"%";
+};
+
+drawPlaylist();
+
+/* DRAW */
+let t=0;
+function draw(){
+ ctx.clearRect(0,0,c.width,c.height);
+ const cx=c.width/2,cy=c.height/2;
+ t+=.02;
+
+ let energy=0,bass=0;
+ if(ready){
+  analyser.getByteFrequencyData(dataArray);
+  let total=0;
+  for(let i=0;i<dataArray.length;i++){
+    total+=dataArray[i];
+    if(i<10) bass+=dataArray[i];
+  }
+  energy=total/dataArray.length;
+  bass=bass/10;
+ }
+
+ /* CLIP CIRCLE */
+ ctx.save();
+ ctx.beginPath();
+ ctx.arc(cx,cy,150,0,Math.PI*2);ctx.clip();
+
+ /* SNOW */
+ snow.forEach(p=>{
+  p.y+=p.s+energy*.01;
+  if(p.y>150)p.y=-150;
+  const x=cx+Math.cos(p.a)*p.r;
+  const y=cy+p.y;
+  ctx.fillStyle="rgba(255,255,255,.7)";
+  ctx.beginPath();
+  ctx.arc(x,y,1.5,0,Math.PI*2);ctx.fill();
+ });
+
+ /* AURA */
+ const glow=ctx.createRadialGradient(cx,cy,30,cx,cy,160);
+ glow.addColorStop(0,`rgba(120,220,255,${.22+energy/255})`);
+ glow.addColorStop(1,"rgba(0,0,0,0)");
+ ctx.fillStyle=glow;
+ ctx.beginPath();
+ ctx.arc(cx,cy,160,0,Math.PI*2);ctx.fill();
+
+ /* LOGO */
+ if(logo.complete){
+  const size=110+bass*.8;
+  ctx.globalCompositeOperation="lighter";
+  ctx.drawImage(logo,cx-size/2,cy-size/2,size,size);
+  ctx.globalCompositeOperation="source-over";
+ }
+
+ ctx.restore();
+
+ requestAnimationFrame(draw);
+}
+draw();
+</script>
+
+</body>
+</html>
